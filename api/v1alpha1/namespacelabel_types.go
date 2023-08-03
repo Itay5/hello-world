@@ -36,6 +36,8 @@ type NamespaceLabelSpec struct {
 type NamespaceLabelStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	LabelCount        int               `json:"labelCount,omitempty"`
+	LastAppliedLabels map[string]string `json:"lastAppliedLabels,omitempty"`
 }
 
 // +kubebuilder:object:root=true

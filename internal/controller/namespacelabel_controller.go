@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	danaiodanaiov1alpha1 "dana.io/hello-world/api/v1alpha1"
@@ -60,6 +61,17 @@ func namespaceReconcile(ctx context.Context, req ctrl.Request, r *NamespaceLabel
 		// requeue the request if we could not get the namespace
 		return false, err
 	}
+	const ControllerUpdateAnnotation = "namespacelabeler.dana.io/controller-update"
+
+	if namespace.ObjectMeta.Annotations[ControllerUpdateAnnotation] == "true" {
+		// This update was done by the controller, so we can skip reconciliation.
+		// Delete the annotation so that future updates not done by the controller will trigger reconciliation.
+		delete(namespace.ObjectMeta.Annotations, ControllerUpdateAnnotation)
+		if err := r.Update(ctx, &namespace); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
 
 	if namespace.ObjectMeta.Labels == nil {
 		namespace.ObjectMeta.Labels = make(map[string]string)
@@ -75,8 +87,10 @@ func namespaceReconcile(ctx context.Context, req ctrl.Request, r *NamespaceLabel
 
 	for _, namespaceLabel := range namespaceLabelList.Items {
 		for key, value := range namespaceLabel.Spec.Labels {
-			namespace.ObjectMeta.Labels[key] = value
-			logger.Info("loop key values", "key", key, "value", value)
+			if _, exists := namespace.ObjectMeta.Labels[key]; !exists {
+				namespace.ObjectMeta.Labels[key] = value
+				logger.Info("loop key values", "key", key, "value", value)
+			}
 		}
 		logger.Info("loop namespace label", "namespaceLabel", namespaceLabel)
 	}
@@ -87,6 +101,30 @@ func namespaceReconcile(ctx context.Context, req ctrl.Request, r *NamespaceLabel
 	} else {
 		return true, nil
 	}
+}
+
+func (r *NamespaceLabelReconciler) deleteExternalResources(ctx context.Context,
+	namespaceLabel *danaiodanaiov1alpha1.NamespaceLabel,
+	namespace *corev1.Namespace) error {
+
+	logger := log.FromContext(ctx)
+
+	logger.Info("deleteExternalResources", "namespaceLabel", namespaceLabel, "namespace", namespace)
+	for key, _ := range namespaceLabel.Spec.Labels {
+		delete(namespace.ObjectMeta.Labels, key)
+		logger.Info("namespace.ObjectMeta.Labels", "HEY", namespace.ObjectMeta.Labels)
+	}
+
+	const ControllerUpdateAnnotation = "namespacelabeler.dana.io/controller-update"
+	namespace.ObjectMeta.Annotations = make(map[string]string)
+	namespace.ObjectMeta.Annotations[ControllerUpdateAnnotation] = "true"
+	// update the namespace with the new labels
+	if err := r.Update(ctx, namespace); err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -124,15 +162,61 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	namespaceLabelFinalizerName := "namespacelabeller.dana.io/finalizer"
+
+	// examine DeletionTimestamp to determine if object is under deletion
+	if namespaceLabel.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object. This is equivalent
+		// registering our finalizer.
+		if !controllerutil.ContainsFinalizer(&namespaceLabel, namespaceLabelFinalizerName) {
+			controllerutil.AddFinalizer(&namespaceLabel, namespaceLabelFinalizerName)
+			if err := r.Update(ctx, &namespaceLabel); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if controllerutil.ContainsFinalizer(&namespaceLabel, namespaceLabelFinalizerName) {
+			// our finalizer is present, so lets handle any external dependency
+			if err := r.deleteExternalResources(ctx, &namespaceLabel, &namespace); err != nil {
+				// if fail to delete the external dependency here, return with error
+				// so that it can be retried
+				return ctrl.Result{}, err
+			}
+
+			// remove our finalizer from the list and update it.
+			controllerutil.RemoveFinalizer(&namespaceLabel, namespaceLabelFinalizerName)
+
+			if err := r.Update(ctx, &namespaceLabel); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		// Stop reconciliation as the item is being deleted
+		return ctrl.Result{}, nil
+	}
 	logger.Info("namespace.ObjectMeta.Labels", "req", namespace.ObjectMeta.Labels)
 
 	// update the labels
 	if namespace.ObjectMeta.Labels == nil {
 		namespace.ObjectMeta.Labels = make(map[string]string)
 	}
+
 	logger.Info("namespacelabel status", "namespacelabel", namespaceLabel.Status)
+	labelCount := 0
 	for key, value := range namespaceLabel.Spec.Labels {
-		namespace.ObjectMeta.Labels[key] = value
+		if _, exists := namespace.ObjectMeta.Labels[key]; !exists {
+			logger.Info("check5", "key", exists)
+			namespace.ObjectMeta.Labels[key] = value
+			labelCount++
+		}
+	}
+
+	for key := range namespaceLabel.Status.LastAppliedLabels {
+		if _, exists := namespaceLabel.Spec.Labels[key]; !exists {
+			delete(namespace.ObjectMeta.Labels, key)
+		}
 	}
 
 	// update the namespace with the new labels
@@ -140,7 +224,12 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	// TODO(user): your logic here
+	// update the NamespaceLabel status with the total count of labels and last applied labels
+	namespaceLabel.Status.LabelCount = labelCount
+	namespaceLabel.Status.LastAppliedLabels = namespaceLabel.Spec.Labels
+	if err := r.Status().Update(ctx, &namespaceLabel); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
