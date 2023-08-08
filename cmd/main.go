@@ -89,6 +89,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setting up NamespaceLabelReconciler
 	if err = (&controller.NamespaceLabelReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -96,6 +97,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "NamespaceLabel")
 		os.Exit(1)
 	}
+
 	if err = (&danaiov1alpha1.NamespaceLabel{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "NamespaceLabel")
 		os.Exit(1)

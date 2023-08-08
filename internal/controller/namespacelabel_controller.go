@@ -25,10 +25,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	danaiodanaiov1alpha1 "dana.io/hello-world/api/v1alpha1"
 )
@@ -52,56 +53,6 @@ type NamespaceLabelReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
-func namespaceReconcile(ctx context.Context, req ctrl.Request, r *NamespaceLabelReconciler) (bool, error) {
-	logger := log.FromContext(ctx)
-
-	var namespace corev1.Namespace
-
-	if err := r.Get(ctx, types.NamespacedName{Name: req.Name}, &namespace); err != nil {
-		// requeue the request if we could not get the namespace
-		return false, err
-	}
-	const ControllerUpdateAnnotation = "namespacelabeler.dana.io/controller-update"
-
-	if namespace.ObjectMeta.Annotations[ControllerUpdateAnnotation] == "true" {
-		// This update was done by the controller, so we can skip reconciliation.
-		// Delete the annotation so that future updates not done by the controller will trigger reconciliation.
-		delete(namespace.ObjectMeta.Annotations, ControllerUpdateAnnotation)
-		if err := r.Update(ctx, &namespace); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
-	if namespace.ObjectMeta.Labels == nil {
-		namespace.ObjectMeta.Labels = make(map[string]string)
-	}
-
-	var namespaceLabelList danaiodanaiov1alpha1.NamespaceLabelList
-
-	if err := r.List(ctx, &namespaceLabelList, client.InNamespace(req.Namespace)); err != nil {
-		return false, nil
-	}
-
-	logger.Info("hey", "hello", namespaceLabelList)
-
-	for _, namespaceLabel := range namespaceLabelList.Items {
-		for key, value := range namespaceLabel.Spec.Labels {
-			if _, exists := namespace.ObjectMeta.Labels[key]; !exists {
-				namespace.ObjectMeta.Labels[key] = value
-				logger.Info("loop key values", "key", key, "value", value)
-			}
-		}
-		logger.Info("loop namespace label", "namespaceLabel", namespaceLabel)
-	}
-	// update the namespace with the new labels
-	if err := r.Update(ctx, &namespace); err != nil {
-		logger.Info("this is it", "error", err)
-		return false, err
-	} else {
-		return true, nil
-	}
-}
 
 func (r *NamespaceLabelReconciler) deleteExternalResources(ctx context.Context,
 	namespaceLabel *danaiodanaiov1alpha1.NamespaceLabel,
@@ -132,15 +83,6 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger := log.FromContext(ctx)
 
 	logger.Info("Reconcile invoked", "req", req)
-
-	// if this is reconcile because change in namespace object, reconcile accordingly and return
-	isNamespaceReconcile, _ := namespaceReconcile(ctx, req, r)
-
-	logger.Info("namespace.ObjectMeta.Labels", "req", isNamespaceReconcile)
-
-	if isNamespaceReconcile {
-		return ctrl.Result{}, nil
-	}
 
 	namespaceLabel := danaiodanaiov1alpha1.NamespaceLabel{}
 	if err := r.Get(ctx, req.NamespacedName, &namespaceLabel); err != nil {
@@ -204,12 +146,10 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	logger.Info("namespacelabel status", "namespacelabel", namespaceLabel.Status)
-	labelCount := 0
 	for key, value := range namespaceLabel.Spec.Labels {
 		if _, exists := namespace.ObjectMeta.Labels[key]; !exists {
 			logger.Info("check5", "key", exists)
 			namespace.ObjectMeta.Labels[key] = value
-			labelCount++
 		}
 	}
 
@@ -225,7 +165,6 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// update the NamespaceLabel status with the total count of labels and last applied labels
-	namespaceLabel.Status.LabelCount = labelCount
 	namespaceLabel.Status.LastAppliedLabels = namespaceLabel.Spec.Labels
 	if err := r.Status().Update(ctx, &namespaceLabel); err != nil {
 		return ctrl.Result{}, err
@@ -236,10 +175,27 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *NamespaceLabelReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&danaiodanaiov1alpha1.NamespaceLabel{}).
-		Watches(&corev1.Namespace{}, &handler.EnqueueRequestForObject{}).
+		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+			namespace := o.(*corev1.Namespace)
+			var requests []reconcile.Request
+			var namespaceLabelList danaiodanaiov1alpha1.NamespaceLabelList
+			if err := r.List(ctx, &namespaceLabelList, client.InNamespace(namespace.Name)); err != nil {
+				return []reconcile.Request{}
+			}
+			for _, namespaceLabel := range namespaceLabelList.Items {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      namespaceLabel.Name,
+						Namespace: namespaceLabel.Namespace,
+					},
+				})
+			}
+
+			return requests
+
+		})).
 		Complete(r)
 
 }

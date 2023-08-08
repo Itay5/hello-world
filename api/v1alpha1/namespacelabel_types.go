@@ -25,8 +25,6 @@ type NamespaceLabelSpec struct {
 
 	// Lables consists of a collection of items known as labels, where each label is represented by a key-value pair.
 	//
-	//+optional
-	//+listType=map
 	Labels map[string]string `json:"labels,omitempty"`
 }
 

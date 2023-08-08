@@ -42,21 +42,19 @@ spec:
               labels:
                 additionalProperties:
                   type: string
-                description: Foo is an example field of NamespaceLabel. Edit namespacelabel_types.go
-                  to remove/update
+                description: Lables consists of a collection of items known as labels,
+                  where each label is represented by a key-value pair.
                 type: object
             type: object
           status:
             description: NamespaceLabelStatus defines the observed state of NamespaceLabel
             properties:
-              labelCount:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
-                type: integer
               lastAppliedLabels:
                 additionalProperties:
                   type: string
+                description: LastAppliedLabels represents the last applied lables,
+                  it consists of the last state of the spec Labels field before the
+                  last change.
                 type: object
             type: object
         type: object
