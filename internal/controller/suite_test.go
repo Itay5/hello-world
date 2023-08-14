@@ -17,7 +17,6 @@ limitations under the License.
 package controller
 
 import (
-	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,7 +29,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	danaiov1alpha1 "dana.io/hello-world/api/v1alpha1"
+	"context"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	danaiodanaiov1alpha1 "dana.io/hello-world/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -41,6 +45,21 @@ var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
 
+var namespaceLabel1 *danaiodanaiov1alpha1.NamespaceLabel
+var namespaceLabel2 *danaiodanaiov1alpha1.NamespaceLabel
+
+const (
+	FirstNamespaceLabelName = "test-namespacelabel1"
+
+	NamespaceLabelNamespace = "default"
+
+	SecondNamespaceLabelName = "test-namespacelabel2"
+
+	timeout  = time.Second * 10
+	duration = time.Second * 10
+	interval = time.Millisecond * 250
+)
+
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -48,12 +67,13 @@ func TestControllers(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
+	useExistingCluster := true
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: true,
+		UseExistingCluster: &useExistingCluster,
 	}
 
 	var err error
@@ -62,7 +82,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = danaiov1alpha1.AddToScheme(scheme.Scheme)
+	err = danaiodanaiov1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
@@ -71,10 +91,64 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	ctx := context.Background()
+
+	By("By creating a second NamespaceLabel")
+	namespaceLabel1 = &danaiodanaiov1alpha1.NamespaceLabel{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "dana.io/v1alpha1",
+			Kind:       "NamespaceLabel",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      FirstNamespaceLabelName,
+			Namespace: NamespaceLabelNamespace,
+		},
+		Spec: danaiodanaiov1alpha1.NamespaceLabelSpec{
+			Labels: map[string]string{
+				"name":          "namespacelabel1",
+				"examplelabel1": "one",
+			},
+		},
+	}
+
+	Expect(k8sClient.Create(ctx, namespaceLabel1)).Should(Succeed())
+
+	By("By creating a second NamespaceLabel")
+	namespaceLabel2 = &danaiodanaiov1alpha1.NamespaceLabel{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "dana.io/v1alpha1",
+			Kind:       "NamespaceLabel",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      SecondNamespaceLabelName,
+			Namespace: NamespaceLabelNamespace,
+		},
+		Spec: danaiodanaiov1alpha1.NamespaceLabelSpec{
+			Labels: map[string]string{
+				"name":          "namespacelabel2",
+				"examplelabel2": "one",
+			},
+		},
+	}
+
+	Expect(k8sClient.Create(ctx, namespaceLabel2)).Should(Succeed())
+
 })
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
+
+	ctx := context.Background()
+
+	// Check if namespaceLabel1 exists and delete it if it does
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: namespaceLabel1.Name, Namespace: namespaceLabel1.Namespace}, &danaiodanaiov1alpha1.NamespaceLabel{}); err == nil {
+		Expect(k8sClient.Delete(ctx, namespaceLabel1)).Should(Succeed())
+	}
+
+	// Check if namespaceLabel2 exists and delete it if it does
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: namespaceLabel2.Name, Namespace: namespaceLabel2.Namespace}, &danaiodanaiov1alpha1.NamespaceLabel{}); err == nil {
+		Expect(k8sClient.Delete(ctx, namespaceLabel2)).Should(Succeed())
+	}
 })
