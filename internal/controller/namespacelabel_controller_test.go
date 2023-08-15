@@ -12,8 +12,6 @@ import (
 
 var _ = Describe("NamespacelabelController", func() {
 
-	// Define utility constants for object names and testing timeouts/durations and intervals.
-
 	Context("When working with NamespaceLabel", func() {
 		It("Should handle NamespaceLabel correctly", func() {
 
