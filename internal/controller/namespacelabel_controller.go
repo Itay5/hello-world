@@ -26,6 +26,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	danaiodanaiov1alpha1 "dana.io/hello-world/api/v1alpha1"
@@ -136,17 +137,19 @@ func (r *NamespaceLabelReconciler) UpdateStatus(ctx context.Context, namespaceLa
 
 func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	//logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	namespaceLabel := danaiodanaiov1alpha1.NamespaceLabel{}
 	if err := r.Get(ctx, req.NamespacedName, &namespaceLabel); err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
 			// For additional cleanup logic use finalizers.
+			logger.Info("NamespaceLabel not found", "namespacedName", req.NamespacedName) // Logging info
 			return ctrl.Result{}, nil
 		}
 
 		// Error reading the object - requeue the request.
+		logger.Error(err, "Failed to get NamespaceLabel", "namespacedName", req.NamespacedName) // Logging the error
 		return ctrl.Result{}, err
 	}
 
@@ -155,6 +158,7 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	var namespace corev1.Namespace
 	if err := r.Get(ctx, types.NamespacedName{Name: req.Namespace}, &namespace); err != nil {
 		// requeue the request if we could not get the namespace
+		logger.Error(err, "Failed to get namespace", "namespace", req.Namespace) // Logging the error
 		return ctrl.Result{}, err
 	}
 
@@ -164,11 +168,13 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// then lets add the finalizer and update the object. This is equivalent
 		// registering our finalizer.
 		if err := r.HandleCreation(ctx, &namespaceLabel); err != nil {
+			logger.Error(err, "Failed to handle creation") // Logging the error
 			return ctrl.Result{}, err
 		}
 	} else {
 		// The object is being deleted
 		if err := r.HandleDeletion(ctx, &namespaceLabel, &namespace); err != nil {
+			logger.Error(err, "Failed to handle deletion") // Logging the error
 			return ctrl.Result{}, err
 		}
 		// Stop reconciliation as the item is being deleted
@@ -178,40 +184,51 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// update the labels
 
 	if err := r.UpdateLabels(ctx, &namespaceLabel, &namespace); err != nil {
+		logger.Error(err, "Failed to update labels") // Logging the error
 		return ctrl.Result{}, err
 	}
 
 	// update the NamespaceLabel status with the total count of labels and last applied labels
 	if err := r.UpdateStatus(ctx, &namespaceLabel); err != nil {
+		logger.Error(err, "Failed to update status") // Logging the error
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
+func (r *NamespaceLabelReconciler) enqueueRequestsFromNamespace(ctx context.Context, o client.Object) []reconcile.Request {
+	logger := log.FromContext(ctx)
+	namespace := o.(*corev1.Namespace)
+	var requests []reconcile.Request
+	var namespaceLabelList danaiodanaiov1alpha1.NamespaceLabelList
+
+	// List the NamespaceLabels for the given Namespace
+	if err := r.List(ctx, &namespaceLabelList, client.InNamespace(namespace.Name)); err != nil {
+		logger.Error(err, "Failed to list NamespaceLabels for namespace", "Namespace", namespace.Name)
+		return []reconcile.Request{}
+	}
+
+	// Iterate through the NamespaceLabels and create reconcile requests for each
+	for _, namespaceLabel := range namespaceLabelList.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      namespaceLabel.Name,
+				Namespace: namespaceLabel.Namespace,
+			},
+		})
+	}
+
+	// Log the number of requests enqueued for the given Namespace
+	logger.Info("Enqueued requests for namespace", "Namespace", namespace.Name, "Number of requests", len(requests))
+
+	return requests
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *NamespaceLabelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&danaiodanaiov1alpha1.NamespaceLabel{}).
-		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
-			namespace := o.(*corev1.Namespace)
-			var requests []reconcile.Request
-			var namespaceLabelList danaiodanaiov1alpha1.NamespaceLabelList
-			if err := r.List(ctx, &namespaceLabelList, client.InNamespace(namespace.Name)); err != nil {
-				return []reconcile.Request{}
-			}
-			for _, namespaceLabel := range namespaceLabelList.Items {
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      namespaceLabel.Name,
-						Namespace: namespaceLabel.Namespace,
-					},
-				})
-			}
-
-			return requests
-
-		})).
+		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(r.enqueueRequestsFromNamespace)).
 		Complete(r)
-
 }
