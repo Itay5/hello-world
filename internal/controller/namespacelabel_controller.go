@@ -163,15 +163,7 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// examine DeletionTimestamp to determine if object is under deletion
-	if namespaceLabel.ObjectMeta.DeletionTimestamp.IsZero() {
-		// The object is not being deleted, so if it does not have our finalizer,
-		// then lets add the finalizer and update the object. This is equivalent
-		// registering our finalizer.
-		if err := r.HandleCreation(ctx, &namespaceLabel); err != nil {
-			logger.Error(err, "Failed to handle creation") // Logging the error
-			return ctrl.Result{}, err
-		}
-	} else {
+	if !namespaceLabel.ObjectMeta.DeletionTimestamp.IsZero() {
 		// The object is being deleted
 		if err := r.HandleDeletion(ctx, &namespaceLabel, &namespace); err != nil {
 			logger.Error(err, "Failed to handle deletion") // Logging the error
@@ -179,6 +171,14 @@ func (r *NamespaceLabelReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, nil
+	}
+
+	// The object is not being deleted, so if it does not have our finalizer,
+	// then lets add the finalizer and update the object. This is equivalent
+	// registering our finalizer.
+	if err := r.HandleCreation(ctx, &namespaceLabel); err != nil {
+		logger.Error(err, "Failed to handle creation") // Logging the error
+		return ctrl.Result{}, err
 	}
 
 	// update the labels

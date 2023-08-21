@@ -11,13 +11,12 @@ import (
 )
 
 var _ = Describe("NamespacelabelController", func() {
+	ctx := context.Background()
+	ns := &corev1.Namespace{}
 
 	Context("When working with NamespaceLabel", func() {
-		It("Should handle NamespaceLabel correctly", func() {
+		It("Should handle NamespaceLabel 1 correctly", func() {
 
-			ctx := context.Background()
-
-			ns := &corev1.Namespace{}
 			// check namespacelabel 1 reconcile
 			By("Waiting for namespacelabel 1 to be reconcile")
 			Eventually(func() bool {
@@ -35,7 +34,10 @@ var _ = Describe("NamespacelabelController", func() {
 				}
 				return true
 			}, timeout, interval).Should(BeTrue(), "Namespace label 1 should be set correctly")
+		})
 
+		// check namespacelabel 2 reconcile
+		It("Should handle NamespaceLabel 2 correctly", func() {
 			// check namespacelabel 2 reconcile
 			By("Waiting for namespacelabel 2 to reconcile")
 			Eventually(func() bool {
@@ -57,11 +59,15 @@ var _ = Describe("NamespacelabelController", func() {
 				return true
 			}, timeout, interval).Should(BeTrue(), "Namespace label 2 should be set correctly")
 
-			// Edit namespacelabel 1
-			By("Editing the NamespaceLabel 1")
+		})
+
+		It("Should edit NamespaceLabel 1 correctly", func() {
 			newLabels := map[string]string{
 				"newkey": "newvalue",
 			}
+
+			// Edit namespacelabel 1
+			By("Editing the NamespaceLabel 1")
 			Eventually(func() error {
 				// Fetch the latest version of the object
 				err := k8sClient.Get(ctx, client.ObjectKey{Name: namespaceLabel1.Name, Namespace: namespaceLabel1.Namespace}, namespaceLabel1)
@@ -93,7 +99,9 @@ var _ = Describe("NamespacelabelController", func() {
 				}
 				return true
 			}, timeout, interval).Should(BeTrue(), "Namespace label 1 should be updated correctly after editing")
+		})
 
+		It("Should enforce original labels after manual deletion", func() {
 			// Manually delete a label from the namespace
 			By("Manually deleting a label from the namespace")
 			deletedKey := "newkey"
@@ -123,7 +131,9 @@ var _ = Describe("NamespacelabelController", func() {
 
 				return true
 			}, timeout, interval).Should(BeTrue(), "Controller should enforce the original labels from namespacelabel 1, even after deletion")
+		})
 
+		It("Should delete NamespaceLabel 1 correctly", func() {
 			// delete namespacelabel 1
 			By("By deleting the NamespaceLabel 1")
 			Expect(k8sClient.Delete(ctx, namespaceLabel1)).Should(Succeed())
@@ -146,7 +156,9 @@ var _ = Describe("NamespacelabelController", func() {
 				}
 				return true
 			}, timeout, interval).Should(BeTrue(), "Namespace label 1 should be deleted correctly")
+		})
 
+		It("Should delete NamespaceLabel 2 correctly", func() {
 			// delete namespacelabel 2
 			By("By deleting the NamespaceLabel 2")
 			Expect(k8sClient.Delete(ctx, namespaceLabel2)).Should(Succeed())
@@ -169,5 +181,6 @@ var _ = Describe("NamespacelabelController", func() {
 				return true
 			}, timeout, interval).Should(BeTrue(), "Namespace label 2 should be deleted correctly")
 		})
+
 	})
 })

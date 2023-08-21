@@ -1,0 +1,79 @@
+// Generated documentation. Please do not edit.
+:anchor_prefix: k8s-api
+
+[id="{p}-api-reference"]
+== API Reference
+
+.Packages
+- xref:{anchor_prefix}-dana-io-dana-io-v1alpha1[$$dana.io.dana.io/v1alpha1$$]
+
+
+[id="{anchor_prefix}-dana-io-dana-io-v1alpha1"]
+=== dana.io.dana.io/v1alpha1
+
+Package v1alpha1 contains API Schema definitions for the dana.io v1alpha1 API group
+
+.Resource Types
+- xref:{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabel[$$NamespaceLabel$$]
+- xref:{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabellist[$$NamespaceLabelList$$]
+
+
+
+[id="{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabel"]
+==== NamespaceLabel 
+
+NamespaceLabel is the Schema for the namespacelabels API
+
+.Appears In:
+****
+- xref:{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabellist[$$NamespaceLabelList$$]
+****
+
+[cols="25a,75a", options="header"]
+|===
+| Field | Description
+| *`apiVersion`* __string__ | `dana.io.dana.io/v1alpha1`
+| *`kind`* __string__ | `NamespaceLabel`
+| *`metadata`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta[$$ObjectMeta$$]__ | Refer to Kubernetes API documentation for fields of `metadata`.
+
+| *`spec`* __xref:{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabelspec[$$NamespaceLabelSpec$$]__ | 
+|===
+
+
+[id="{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabellist"]
+==== NamespaceLabelList 
+
+NamespaceLabelList contains a list of NamespaceLabel
+
+
+
+[cols="25a,75a", options="header"]
+|===
+| Field | Description
+| *`apiVersion`* __string__ | `dana.io.dana.io/v1alpha1`
+| *`kind`* __string__ | `NamespaceLabelList`
+| *`metadata`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta[$$ListMeta$$]__ | Refer to Kubernetes API documentation for fields of `metadata`.
+
+| *`items`* __xref:{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabel[$$NamespaceLabel$$] array__ | 
+|===
+
+
+[id="{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabelspec"]
+==== NamespaceLabelSpec 
+
+NamespaceLabelSpec defines the desired state of NamespaceLabel
+
+.Appears In:
+****
+- xref:{anchor_prefix}-dana-io-hello-world-api-v1alpha1-namespacelabel[$$NamespaceLabel$$]
+****
+
+[cols="25a,75a", options="header"]
+|===
+| Field | Description
+| *`labels`* __object (keys:string, values:string)__ | Lables consists of a collection of items known as labels, where each label is represented by a key-value pair.
+|===
+
+
+
+
